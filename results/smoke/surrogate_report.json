@@ -1,0 +1,88 @@
+{
+  "fidelity": [
+    {
+      "split": "val",
+      "n": 308,
+      "mse": 0.198215514421463,
+      "r2_mean": 0.7803452610969543,
+      "cosine": 0.8836768269538879,
+      "dist_pearson": 0.8934709737146109,
+      "dist_kendall": 0.7010253071784973
+    },
+    {
+      "split": "test",
+      "n": 1119,
+      "mse": 0.39052048325538635,
+      "r2_mean": 0.5096453428268433,
+      "cosine": 0.7187669277191162,
+      "dist_pearson": 0.7246266667186771,
+      "dist_kendall": 0.48223844170570374
+    },
+    {
+      "split": "holdout",
+      "n": 811,
+      "mse": 0.42504265904426575,
+      "r2_mean": 0.28755396604537964,
+      "cosine": 0.673444390296936,
+      "dist_pearson": 0.5292442247183056,
+      "dist_kendall": 0.38724255561828613
+    }
+  ],
+  "config": {
+    "name": "smoke",
+    "sr": 16000,
+    "dur": 0.25,
+    "chunk_b": 64,
+    "seed": 0,
+    "sweep_values": [
+      0.1,
+      0.5,
+      0.9
+    ],
+    "n_jitter_per_anchor": 120,
+    "n_uniform": 500,
+    "n_sparse": 150,
+    "sigma_cont": 0.1,
+    "sigma_choice": 0.03,
+    "hidden": 256,
+    "depth": 2,
+    "epochs": 150,
+    "batch": 256,
+    "lr": 0.001,
+    "patience": 40,
+    "val_frac": 0.1,
+    "test_frac": 0.1,
+    "n_targets": 48,
+    "steps_true": 60,
+    "steps_surrogate": 200,
+    "lr_opt": 0.05,
+    "trust_radius": 0.35,
+    "log_every": 5,
+    "reground_every": 20,
+    "reground_inner": 15,
+    "reground_buffer": 512,
+    "cmaes_gens": 45,
+    "cmaes_pop": 10,
+    "cmaes_sigma": 0.25,
+    "retrieval_draws": 64,
+    "e1_n_triplets": 120,
+    "e1_distance_bins": [
+      [
+        0.0,
+        0.25
+      ],
+      [
+        0.25,
+        0.5
+      ],
+      [
+        0.5,
+        0.75
+      ],
+      [
+        0.75,
+        1.01
+      ]
+    ]
+  }
+}

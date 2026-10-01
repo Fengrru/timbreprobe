@@ -1,0 +1,23 @@
+# --- generated artifacts (regenerate with `python -m stage0.cli all`) ---
+out/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# --- editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- scratch ---
+*.log
+.ruff_cache/
+.pytest_cache/

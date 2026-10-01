@@ -1,0 +1,29 @@
+name: ci
+
+# NOTE: written for GitHub-hosted runners but not executed locally (the
+# development machine is Windows and has no network access to CI). If the
+# first run turns red, the most likely culprit is a torch/Python version
+# mismatch -- pin `python-version` and `torch` in requirements.txt to fix.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Correctness suite (determinism, gradients, monotonicity, CMA-ES, filter fidelity)
+        run: python -m timbreprobe.cli sanity

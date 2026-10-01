@@ -1,0 +1,5 @@
+# keep source text LF in the repository regardless of platform
+* text=auto eol=lf
+*.wav binary
+*.npz binary
+*.png binary

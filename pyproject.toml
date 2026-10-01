@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "timbreprobe"
+version = "0.1.0"
+description = "Stage 0: a differentiable synthesizer + handcrafted perceptual embedding, and the E1/E2 experiments that test whether timbre similarity can be measured and navigated in that space."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+keywords = ["timbre", "synthesis", "perceptual", "embedding", "inverse-synthesis", "research"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Synthesis",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+authors = [{ name = "Fengrru" }]
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+report = ["scipy>=1.10", "matplotlib>=3.7", "soundfile>=0.12"]
+
+[project.scripts]
+timbreprobe = "timbreprobe.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["timbreprobe*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "SIM"]

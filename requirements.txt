@@ -1,0 +1,16 @@
+# Stage 0 runtime requirements.
+#
+# Tested with Python 3.14 + torch 2.12 (CPU-only) on Windows 10.
+# Linux/macOS work the same way; a GPU build of torch is a drop-in replacement
+# and roughly 1-2 orders of magnitude faster for the render-heavy stages.
+#
+# Install a platform-appropriate torch first if you need CUDA:
+#   https://pytorch.org/get-started/locally/
+torch>=2.0
+numpy>=1.24
+
+# Reporting / audio I/O (imported lazily by the CLI, but needed for the full
+# pipeline: `sanity` uses scipy, `corpus` writes demo wavs, `plot` draws figures)
+scipy>=1.10
+soundfile>=0.12
+matplotlib>=3.7
