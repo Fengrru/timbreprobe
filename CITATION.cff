@@ -9,7 +9,6 @@ authors:
   - family-names: "Feng"
     given-names: "Yuhan"
     email: "fengru1005@gmail.com"
-    # affiliation: "<INSTITUTION>"   # uncomment and fill if you want it cited
 repository-code: "https://github.com/Fengrru/timbreprobe"
 keywords:
   - timbre
