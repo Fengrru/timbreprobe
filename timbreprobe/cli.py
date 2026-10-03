@@ -228,9 +228,27 @@ def cmd_e2(args) -> None:
     from .experiment_e2 import run_e2
     cfg = C.get(args.preset)
     corpus_dir = Path(args.corpus) if args.corpus else OUT / f"corpus_{cfg.name}"
-    out = Path(args.out) if args.out else OUT / f"e2_{cfg.name}"
+    if getattr(args, "seed", None) is not None:
+        cfg.seed = int(args.seed)
+    if getattr(args, "metric", None):
+        cfg.metric = args.metric
+    tag = f"_seed{cfg.seed}" if cfg.seed else ""
+    tag += "_balanced" if cfg.metric != "uniform" else ""
+    default_out = OUT / f"e2_{cfg.name}{tag}"
+    out = Path(args.out) if args.out else default_out
     methods = [m.strip() for m in args.methods.split(",")] if args.methods else None
     run_e2(cfg, corpus_dir, out, methods=methods)
+
+
+def cmd_diagnose(args) -> None:
+    _set_threads()
+    from .diagnose import run_diagnostics
+    cfg = C.get(args.preset)
+    if getattr(args, "seed", None) is not None:
+        cfg.seed = int(args.seed)
+    run_dir = Path(args.run)
+    corpus_dir = Path(args.corpus) if args.corpus else OUT / f"corpus_{cfg.name}"
+    run_diagnostics(run_dir, corpus_dir, cfg)
 
 
 def cmd_all(args) -> None:
@@ -279,10 +297,22 @@ def main(argv=None) -> None:
         if name in ("e2", "all", "e1"):
             sp.add_argument("--corpus", default=None)
         if name in ("e2", "all"):
+            sp.add_argument("--seed", default=None, type=int,
+                            help="override the preset seed (robustness replicates)")
+            sp.add_argument("--metric", default=None, choices=["uniform", "balanced"],
+                            help="objective weighting (see config.Config.metric)")
             sp.add_argument("--methods", default=None,
                             help="comma list of: retrieval,grad_surrogate,grad_reground,"
                                  "cmaes_true,grad_true")
         sp.set_defaults(func=fn)
+
+    sp_dg = sub.add_parser("diagnose", help="residual / discrete-jump / ablation "
+                                             "diagnostics for an E2 run")
+    sp_dg.add_argument("--run", required=True, help="run dir, e.g. out/e2_smoke")
+    sp_dg.add_argument("--preset", default="smoke", choices=list(C.PRESETS))
+    sp_dg.add_argument("--corpus", default=None)
+    sp_dg.add_argument("--seed", default=None, type=int)
+    sp_dg.set_defaults(func=cmd_diagnose)
 
     sp_pl = sub.add_parser("plot", help="figures for one or more E2 runs")
     sp_pl.add_argument("--run", required=True,

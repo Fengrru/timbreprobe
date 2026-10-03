@@ -40,6 +40,25 @@ class PerceptualSpace:
         self.stats = stats
         self.cfg = cfg
         self.patch_renders = 0
+        self.weights = self._metric_weights(cfg)
+
+    @staticmethod
+    def _metric_weights(cfg: Config) -> torch.Tensor:
+        """Per-dimension weights for the embedding distance.
+
+        `balanced` equalises each feature block's expected contribution:
+        after z-scoring every dim has unit variance, so a block of d dims
+        contributes d on average; weighting it by 1/sqrt(d) makes blocks
+        comparable and stops the 64-dim log-mel block from dominating the
+        objective by sheer dimensionality.  Rescaled so the distance scale
+        stays comparable to the uniform case.
+        """
+        w = torch.ones(features.FRAW, dtype=torch.float32)
+        if getattr(cfg, "metric", "uniform") == "balanced":
+            for _, blk in features.FEATURE_BLOCKS.items():
+                w[blk] = 1.0 / math.sqrt(blk.stop - blk.start)
+            w = w / torch.linalg.vector_norm(w) * math.sqrt(features.FRAW)
+        return w
 
     def embed(self, u: torch.Tensor, no_grad: bool = True) -> torch.Tensor:
         self.patch_renders += int(u.shape[0])
@@ -55,7 +74,7 @@ class PerceptualSpace:
     def dist(self, u: torch.Tensor, z_target: torch.Tensor, no_grad: bool = True
              ) -> torch.Tensor:
         z = self.embed(u, no_grad=no_grad)
-        return torch.linalg.vector_norm(z - z_target, dim=1)
+        return torch.linalg.vector_norm((z - z_target) * self.weights.to(z.device), dim=1)
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +83,8 @@ class PerceptualSpace:
 
 def nav_gradient(u0: torch.Tensor, z_target: torch.Tensor, space: PerceptualSpace,
                  steps: int, lr: float, model: Surrogate | None = None,
-                 log_every: int = 5, trust_radius: float = 0.0
+                 log_every: int = 5, trust_radius: float = 0.0,
+                 monotone: bool = True
                  ) -> tuple[torch.Tensor, list[tuple[int, torch.Tensor]]]:
     """Projected Adam with a per-target adaptive step (single backtrack per step).
 
@@ -83,6 +103,12 @@ def nav_gradient(u0: torch.Tensor, z_target: torch.Tensor, space: PerceptualSpac
     `trust_radius` > 0 confines the search to an L2 ball around u0 (per target):
     for surrogate runs this separates surrogate error inside the data region
     from drifting off the manifold where the surrogate is arbitrary.
+
+    `monotone=False` drops the accept/reject rule (every candidate is taken)
+    while keeping the adaptive step.  This is the ablation separating "the
+    landscape is hard" from "monotone search cannot cross valleys": only a
+    non-monotone walk can pass through transiently worse states, which is what
+    a discrete waveform/octave jump requires.
     """
     u = u0.clone().detach()
     m = torch.zeros_like(u)
@@ -116,8 +142,12 @@ def nav_gradient(u0: torch.Tensor, z_target: torch.Tensor, space: PerceptualSpac
 
             d_cand = objective(cand, need_grad=False)
             improved = d_cand <= d_cur
-            u = torch.where(improved[:, None], cand, u)
-            d_cur = torch.where(improved, d_cand, d_cur)
+            # a non-finite candidate is never acceptable: with the accept gate
+            # off, one bad gradient would otherwise poison the whole walk
+            take = improved if monotone else torch.ones_like(improved)
+            take = take & torch.isfinite(d_cand)
+            u = torch.where(take[:, None], cand, u)
+            d_cur = torch.where(take, d_cand, d_cur)
             step_size = torch.where(improved[:, None],
                                     (step_size * 1.3).clamp(max=max(4.0 * lr, 1e-4)),
                                     (step_size * 0.5).clamp(min=lr / 64.0))
@@ -165,9 +195,10 @@ def nav_reground(u0: torch.Tensor, z_target: torch.Tensor, space: PerceptualSpac
             loss = torch.nn.functional.mse_loss(work(bu), bz)
             loss.backward()
             opt.step()
-    with torch.no_grad():  # final honest score with the true renderer
-        d_final = space.dist(u, z_target)
-    traj.append((step, d_final.clone()))
+    # The trajectory stays in the *surrogate* objective.  Appending the final
+    # true-renderer distance here would mix two scales in one curve (it put a
+    # spurious 2.5x jump at the end of the plotted trajectory) and would also
+    # duplicate the caller's own true-objective evaluation of the result.
     return u.detach(), traj, renders
 
 

@@ -39,6 +39,19 @@ class Config:
 
     # --- E2 navigation ----------------------------------------------------
     n_targets: int = 48
+    # A target whose nearest *training* patch is closer than this fraction of
+    # the pool's median nearest-neighbour distance is a near-duplicate: the
+    # retrieval start already solves it, so `d_final/d_init` is degenerate
+    # (d_init = 0 was observed for jitter duplicates that straddle the split).
+    # Such targets are resampled away -- see experiment_e2._sample_targets.
+    target_min_rel_distance: float = 0.25
+    # Objective weighting.  With `uniform` (default) every embedding dimension
+    # contributes equally to the squared distance, so the 64-dim log-mel block
+    # dominates by dimensionality alone.  With `balanced`, each block's
+    # expected contribution is equalised (per-dim weight 1/sqrt(block size),
+    # rescaled to keep the overall distance scale comparable) -- the direct test
+    # of "the metric's weighting, not the search, is the constraint".
+    metric: str = "uniform"   # "uniform" | "balanced"
     steps_true: int = 60
     steps_surrogate: int = 200
     lr_opt: float = 0.05

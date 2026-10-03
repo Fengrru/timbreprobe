@@ -53,6 +53,7 @@
     "val_frac": 0.1,
     "test_frac": 0.1,
     "n_targets": 48,
+    "target_min_rel_distance": 0.25,
     "steps_true": 60,
     "steps_surrogate": 200,
     "lr_opt": 0.05,

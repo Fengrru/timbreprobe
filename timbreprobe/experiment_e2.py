@@ -47,6 +47,17 @@ def _bootstrap_ci(x: np.ndarray, stat: str = "median", n: int = 2000, seed: int 
     return float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5))
 
 
+def _med(x: torch.Tensor) -> float:
+    """Interpolating median, matching numpy/scipy.
+
+    torch.median() returns the lower middle element for an even sample, so the
+    same numbers read 2.586 there and 2.652 in numpy -- a difference large
+    enough that a reader recomputing the statistics would think a number was
+    wrong.  Every median in this module goes through here.
+    """
+    return float(torch.quantile(x.flatten().float(), 0.5))
+
+
 def _param_l1(u_pred: torch.Tensor, u_true: torch.Tensor) -> torch.Tensor:
     return (S.harden(u_pred) - S.harden(u_true)).abs().mean(dim=1)
 
@@ -59,11 +70,12 @@ def _summarise(name: str, d_final: torch.Tensor, d_init: torch.Tensor,
     lo, hi = _bootstrap_ci(ratio.numpy())
     out = {
         "method": name,
-        "d_final_median": float(d_final.median()),
+        "d_final_median": _med(d_final),
         "d_final_mean": float(d_final.mean()),
-        "ratio_median": float(ratio.median()),
+        "ratio_median": _med(ratio),
         "ratio_median_ci95": [lo, hi],
         "ratio_mean": float(ratio.mean()),
+        "d_delta_median": _med(d_init - d_final),
         "success@0.5": float((ratio < 0.5).float().mean()),
         "success@0.2": float((ratio < 0.2).float().mean()),
         "param_l1_mean": float(_param_l1(u_pred, u_target).mean()),
@@ -72,11 +84,59 @@ def _summarise(name: str, d_final: torch.Tensor, d_init: torch.Tensor,
     }
     for tag, mask in (("indist", ~holdout), ("holdout", holdout)):
         if bool(mask.any()):
-            out[f"ratio_median_{tag}"] = float(ratio[mask].median())
+            out[f"ratio_median_{tag}"] = _med(ratio[mask])
             out[f"success@0.5_{tag}"] = float((ratio[mask] < 0.5).float().mean())
     if extra:
         out.update(extra)
     return out
+
+
+def _sample_targets(corpus, splits: dict, z_all: torch.Tensor, z_pool: torch.Tensor,
+                    cfg: Config) -> np.ndarray:
+    """Regime-balanced target sampling that drops near-duplicate targets.
+
+    The corpus jitter layer places patches densely around each anchor, so a
+    small fraction of *test* patches sit within numerical noise of a *training*
+    patch.  Those targets are already solved by the retrieval start (their
+    ``d_init`` is exactly 0), which makes the ratio ``d_final/d_init``
+    unbounded: left in, they drag the mean to ~1e7 while leaving the median
+    untouched.  We therefore resample until every accepted target sits at least
+    ``cfg.target_min_rel_distance`` times the median nearest-neighbour distance
+    away from the training pool, keeping the original regime balance
+    (held-out anchor regions vs in-distribution).
+    """
+    rng = np.random.default_rng(cfg.seed + 77)
+    test_all = splits["test"]
+    test_ho = np.array([i for i in test_all if corpus.holdout[i]], dtype=np.int64)
+    test_id = np.array([i for i in test_all if not corpus.holdout[i]], dtype=np.int64)
+    n_ho_want = min(cfg.n_targets // 2, len(test_ho))
+    n_id_want = min(cfg.n_targets - n_ho_want, len(test_id))
+
+    # `use_mm_for_euclid_dist` (the cdist default) computes d^2 = |a|^2+|b|^2-2ab
+    # and loses all precision for near-identical vectors -- exactly the regime
+    # this filter is about.  The direct form is slower but these matrices are
+    # small, so we take the accurate path wherever the answer decides a filter.
+    _ACC = dict(compute_mode="donot_use_mm_for_euclid_dist")
+    d_all = torch.cdist(z_all[torch.as_tensor(test_all)], z_pool, **_ACC).min(dim=1).values
+    floor = float(torch.quantile(d_all.float(), 0.5)) * cfg.target_min_rel_distance
+
+    def draw(pool: np.ndarray, k: int) -> list[int]:
+        d_pool = torch.cdist(z_all[torch.as_tensor(pool)], z_pool, **_ACC).min(dim=1).values
+        order = rng.permutation(len(pool))
+        keep, dropped = [], 0
+        for j in order:
+            if float(d_pool[j]) >= floor:
+                keep.append(int(pool[j]))
+            else:
+                dropped += 1
+        if dropped:
+            print(f"[e2] dropped {dropped} near-duplicate candidate target(s) "
+                  f"(d_init < {floor:.3f})", flush=True)
+        return keep[:k]
+
+    t_idx = np.array(draw(test_ho, n_ho_want) + draw(test_id, n_id_want), dtype=np.int64)
+    rng.shuffle(t_idx)
+    return t_idx
 
 
 def run_e2(cfg: Config, corpus_dir: Path, out_dir: Path,
@@ -111,24 +171,16 @@ def run_e2(cfg: Config, corpus_dir: Path, out_dir: Path,
                    {"fidelity": fid, "config": vars(cfg)})
 
     # ---- targets and shared start points ---------------------------------
-    rng = np.random.default_rng(cfg.seed + 77)
-    test_all = splits["test"]
-    test_ho = np.array([i for i in test_all if corpus.holdout[i]], dtype=np.int64)
-    test_id = np.array([i for i in test_all if not corpus.holdout[i]], dtype=np.int64)
-    n_ho = min(cfg.n_targets // 2, len(test_ho))
-    n_id = min(cfg.n_targets - n_ho, len(test_id))
-    t_idx = np.concatenate([rng.choice(test_ho, n_ho, replace=False),
-                            rng.choice(test_id, n_id, replace=False)])
-    rng.shuffle(t_idx)
+    u_pool = u_all[splits["train"]].clone()
+    z_pool = z_all_t[splits["train"]].clone()
+    t_idx = _sample_targets(corpus, splits, z_all_t, z_pool, cfg)
     holdout_mask = torch.as_tensor(corpus.holdout[t_idx])
     u_target = u_all[t_idx].clone()
     z_target = z_all_t[t_idx].clone()
-    u_pool = u_all[splits["train"]].clone()
-    z_pool = z_all_t[splits["train"]].clone()
 
     d_nearest, d_unigram = retrieval_distances(z_target, z_pool,
                                                draws=cfg.retrieval_draws, seed=cfg.seed)
-    dmat = torch.cdist(z_target, z_pool)
+    dmat = torch.cdist(z_target, z_pool, compute_mode="donot_use_mm_for_euclid_dist")
     u_start = u_pool[dmat.argmin(dim=1)].clone()
     d_init = torch.linalg.vector_norm(z_target - z_pool[dmat.argmin(dim=1)], dim=1)
     print(f"[e2] targets={len(t_idx)} ({int(holdout_mask.sum())} holdout-anchor) "
@@ -195,8 +247,8 @@ def run_e2(cfg: Config, corpus_dir: Path, out_dir: Path,
 
     # ---- re-grounded surrogate -------------------------------------------
     if "grad_reground" in methods:
-        anchor_sel = rng.choice(splits["train"], size=min(256, len(splits["train"])),
-                                replace=False)
+        anchor_sel = np.random.default_rng(cfg.seed + 991).choice(
+            splits["train"], size=min(256, len(splits["train"])), replace=False)
         def f_reg():
             u, traj, renders = nav_reground(
                 u_start, z_target, space, model, cfg,

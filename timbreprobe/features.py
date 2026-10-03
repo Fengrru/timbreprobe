@@ -33,6 +33,24 @@ FMAX = 7600.0
 _EPS = 1e-8
 FRAW = 85
 
+# Canonical grouping of the 85 dimensions, used by reporting and by the
+# residual diagnostics (`python -m timbreprobe.cli diagnose`).
+FEATURE_BLOCKS: dict[str, slice] = {
+    "log-mel mean+std": slice(0, 64),
+    "centroid": slice(64, 66),
+    "bandwidth": slice(66, 68),
+    "rolloff (soft)": slice(68, 70),
+    "flatness": slice(70, 72),
+    "flux": slice(72, 74),
+    "slope": slice(74, 76),
+    "crest": slice(76, 77),
+    "high/low band ratio": slice(77, 78),
+    "envelope stats": slice(78, 82),
+    "zero-crossing (smooth)": slice(82, 83),
+    "harmonic ratio": slice(83, 84),
+    "odd/even ratio": slice(84, 85),
+}
+
 
 def _hz_to_mel(f: torch.Tensor) -> torch.Tensor:
     return 2595.0 * torch.log10(1.0 + f / 700.0)
@@ -129,7 +147,9 @@ def embed(wave: torch.Tensor, f0_hz: torch.Tensor | None = None,
     soft_peak = tau * torch.logsumexp(energy / tau, dim=1)          # smooth max
     dyn = 10.0 * torch.log10((soft_peak + _EPS) / (energy.mean(dim=1) + _EPS))
     feats.append(env_centroid[:, None])
-    feats.append(torch.sqrt(env_spread)[:, None])
+    # sqrt(0) has an infinite derivative; the epsilon keeps the backward
+    # finite for degenerate envelopes (e.g. all energy in one frame).
+    feats.append(torch.sqrt(env_spread + 1e-12)[:, None])
     feats.append(frontback[:, None])
     feats.append(dyn[:, None])
 

@@ -1,6 +1,6 @@
 # timbreprobe — can timbre be measured and navigated?
 
-[中文说明 / Chinese README](README.zh.md)
+[中文说明 / Chinese README](README.zh.md) · **Action guide:** [ROADMAP.md](ROADMAP.md)
 
 This repository is the **gate experiment** for a larger research programme on
 *inverse synthesizer patch synthesis*: mapping human intent (a text description
@@ -226,7 +226,8 @@ this code will hit it too:
 
 ```
 .
-├── timbreprobe/                 # the package (see module table above)
+├── timbreprobe/            # the package (see module table above)
+├── ROADMAP.md              # operational action guide (Chinese)
 ├── assets/demo/            # 16 anchor patches as wav (hear the space)
 ├── results/smoke/          # committed result artefacts of the smoke run
 ├── requirements.txt  pyproject.toml  CITATION.cff  LICENSE

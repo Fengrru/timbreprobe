@@ -1,6 +1,6 @@
 # timbreprobe — 音色能不能被测量、能不能被导航？
 
-[English README](README.md)
+[English README](README.md) · **行动指南：** [ROADMAP.md](ROADMAP.md)
 
 这个仓库是一个更大的研究计划——**合成器 Patch 逆向生成**（从人类意图到结构化合成器参数，而不是直接生成波形）——的**前置 gate 实验**。在投入整套系统之前，有两个假设必须先成立，Stage 0 就是来检验它们的：
 
@@ -147,7 +147,8 @@ patch u ∈ [0,1]^31
 
 ```
 .
-├── timbreprobe/                 # 包（模块表见上）
+├── timbreprobe/            # 包（模块表见上）
+├── ROADMAP.md              # 行动指南（操作版）
 ├── assets/demo/            # 16 个锚点 patch 的 wav（先听为快）
 ├── results/smoke/          # 已提交的冒烟结果产物
 ├── requirements.txt  pyproject.toml  CITATION.cff  LICENSE

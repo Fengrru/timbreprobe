@@ -16,7 +16,7 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Synthesis",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-authors = [{ name = "Fengrru" }]
+authors = [{ name = "Feng Yuhan", email = "fengru1005@gmail.com" }]
 dependencies = [
     "torch>=2.0",
     "numpy>=1.24",

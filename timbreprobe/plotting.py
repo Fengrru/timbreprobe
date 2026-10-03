@@ -10,14 +10,75 @@ from pathlib import Path
 
 import numpy as np
 
-METHOD_ORDER = ["retrieval_nearest", "retrieval_unigram64", "grad_surrogate",
+METHOD_ORDER = ["retrieval_nearest", "retrieval_unigram", "grad_surrogate",
                 "grad_surrogate_trust", "grad_reground", "cmaes_true", "grad_true"]
+
+
+def _resolve(order, methods):
+    """Match method names to result keys, tolerating suffixed variants."""
+    out = []
+    for m in order:
+        if m in methods:
+            out.append(m)
+        else:
+            hits = sorted(k for k in methods if k.startswith(m))
+            out.extend(hits[:1])
+    return out
 
 CURVE_LEGEND = (("grad_true_true", "grad_true (true obj)", "-"),
                 ("cmaes_true_true", "cmaes_true (best-so-far)", "-"),
                 ("grad_surrogate_surr", "grad_surrogate (surrogate obj)", "--"),
                 ("grad_surrogate_trust_surr", "grad_surrogate_trust (surr obj)", "-."),
                 ("grad_reground_surr", "grad_reground (surrogate obj)", ":"))
+
+
+def _pareto(run: Path, fig_dir: Path, n_targets: int, pop: int, log_every: int) -> None:
+    """Quality vs true renders: the two true-objective methods as lines, the
+    others as points at their total render cost (all y-values are true
+    distances, so the axes are comparable)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    curves = np.load(run / "curves.npz")
+    res = json.loads((run / "e2_results.json").read_text(encoding="utf-8"))
+    d_init = float(np.median(curves["d_init"]))
+
+    fig, ax = plt.subplots(figsize=(7.6, 4.4))
+    # lines: renders per logging step -> n*(2*i*log_every + 1) for grad_true,
+    #        n*(1 + i*pop) for CMA-ES (initial evaluation + pop per generation)
+    if "grad_true_true" in curves:
+        arr = curves["grad_true_true"]
+        x = n_targets * (2 * np.arange(arr.shape[0]) * log_every + 1)
+        ax.plot(x, np.median(arr, axis=1), "-", color="#d9534f",
+                label="grad_true (oracle)", linewidth=1.9)
+    if "cmaes_true_true" in curves:
+        arr = curves["cmaes_true_true"]
+        x = n_targets * (1 + np.arange(arr.shape[0]) * pop)
+        ax.plot(x, np.median(arr, axis=1), "-", color="#f0ad4e",
+                label="cmaes_true (best-so-far)", linewidth=1.9)
+
+    # points: surrogate methods (and their final true distances) from the JSON
+    for key, colour, label in (("grad_surrogate", "#7fb3d5", "grad_surrogate"),
+                               ("grad_surrogate_trust", "#a9cbe3", "grad_surrogate_trust"),
+                               ("grad_reground", "#9b8fd0", "grad_reground"),
+                               ("retrieval_unigram", "#888888", "retrieval_unigram64")):
+        r = res["results"].get(key)
+        if r:
+            ax.scatter([max(r["renders"], 2)], [r["d_final_median"]], s=42,
+                       color=colour, zorder=4,
+                       label=f"{label} ({r['renders']} renders)")
+    ax.axhline(d_init, color="k", linestyle="--", linewidth=1,
+               label=f"retrieval start ({d_init:.2f})")
+    ax.set_xscale("log")
+    ax.set_xlabel("true renders consumed (log)")
+    ax.set_ylabel("median true distance to target")
+    ax.set_title("E2: quality per render")
+    ax.legend(fontsize=8, loc="upper right")
+    ax.grid(alpha=.3, which="both")
+    fig.tight_layout()
+    fig.savefig(fig_dir / "e2_pareto.png", dpi=140)
+    plt.close(fig)
 
 
 def make_figures(run_dir: Path) -> Path:
@@ -33,7 +94,7 @@ def make_figures(run_dir: Path) -> Path:
     methods = res["results"]
 
     # ---- 1. final ratio per method --------------------------------------
-    order = [m for m in METHOD_ORDER if m in methods] or list(methods)
+    order = _resolve(METHOD_ORDER, methods) or list(methods)
     ratios = [methods[m]["ratio_median"] for m in order]
     err_lo = [methods[m]["ratio_median"] - methods[m]["ratio_median_ci95"][0] for m in order]
     err_hi = [methods[m]["ratio_median_ci95"][1] - methods[m]["ratio_median"] for m in order]
@@ -71,4 +132,11 @@ def make_figures(run_dir: Path) -> Path:
     fig.tight_layout()
     fig.savefig(fig_dir / "e2_curves.png", dpi=140)
     plt.close(fig)
+
+    # ---- 3. quality vs render budget -------------------------------------
+    tg = np.load(run / "targets.npz")
+    n_targets = int(tg["d_init"].shape[0])
+    pop = int(res["results"].get("cmaes_true", {}).get("population", 10))
+    log_every = int(res["config"].get("log_every", 5))
+    _pareto(run, fig_dir, n_targets, pop, log_every)
     return fig_dir
