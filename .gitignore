@@ -28,3 +28,12 @@ paper/pages/
 *.log
 .ruff_cache/
 .pytest_cache/
+
+# Rendered page images produced during layout checks
+paper/pages/
+
+# LaTeX build intermediates
+paper/*.aux
+paper/*.out
+paper/*.blg
+paper/*.log
